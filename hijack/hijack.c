@@ -257,7 +257,8 @@ load_symtab(char *filename)
 static int
 load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 {
-	char raw[80000]; // this depends on the number of libraries an executable uses
+  int raw_size=4*1024*1024;
+	char* raw=malloc(raw_size); // this depends on the number of libraries an executable uses
 	char name[MAX_NAME_LEN];
 	char *p;
 	unsigned long start, end;
@@ -265,7 +266,13 @@ load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 	int nmm = 0;
 	int fd, rv;
 	int i;
-
+  
+  if(raw == 0)
+  {
+    printf("Can't malloc 0x%x\n", raw_size);
+		return -1;
+  }
+  
 	sprintf(raw, "/proc/%d/maps", pid);
 	fd = open(raw, O_RDONLY);
 	if (0 > fd) {
@@ -274,20 +281,21 @@ load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 	}
 
 	/* Zero to ensure data is null terminated */
-	memset(raw, 0, sizeof(raw));
+	memset(raw, 0, raw_size);
 
 	p = raw;
 	while (1) {
-		rv = read(fd, p, sizeof(raw)-(p-raw));
+		rv = read(fd, p, raw_size-(p-raw));
 		if (0 > rv) {
-			//perror("read");
+			perror("read");
 			return -1;
 		}
 		if (0 == rv)
 			break;
 		p += rv;
-		if (p-raw >= sizeof(raw)) {
+		if (p-raw >= raw_size) {
 			printf("Too many memory mapping\n");
+			free(raw);
 			return -1;
 		}
 	}
@@ -337,6 +345,8 @@ load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 	}
 
 	*nmmp = nmm;
+	if(raw)
+	    free(raw);
 	return 0;
 }
 
@@ -456,7 +466,7 @@ lookup_func_sym(symtab_t s, char *name, unsigned long *val)
 static int
 find_name(pid_t pid, char *name, unsigned long *addr)
 {
-	struct mm mm[1000];
+	struct mm mm[4096];
 	unsigned long libcaddr;
 	int nmm;
 	char libc[256];
@@ -485,7 +495,7 @@ find_name(pid_t pid, char *name, unsigned long *addr)
 
 static int find_linker(pid_t pid, unsigned long *addr)
 {
-	struct mm mm[1000];
+	struct mm mm[4096];
 	unsigned long libcaddr;
 	int nmm;
 	char libc[256];
